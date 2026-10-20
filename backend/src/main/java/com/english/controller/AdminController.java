@@ -2176,6 +2176,9 @@ public class AdminController {
             } catch (NumberFormatException e) {
                 tag.setSortOrder(0);
             }
+            // 1 = 内部标签：仅用于内容追溯，不在学生端展示
+            Object internalFlag = data.get("isInternal");
+            tag.setIsInternal(Boolean.TRUE.equals(internalFlag) || "1".equals(String.valueOf(internalFlag)) ? 1 : 0);
             tag.setDeleted(0);
 
             contentTagService.save(tag);
@@ -2227,6 +2230,11 @@ public class AdminController {
                 } catch (NumberFormatException e) {
                     tag.setSortOrder(0);
                 }
+            }
+            if (data.containsKey("isInternal")) {
+                Object flag = data.get("isInternal");
+                tag.setIsInternal(flag == null ? 0
+                        : (Boolean.TRUE.equals(flag) || "1".equals(flag.toString()) ? 1 : 0));
             }
 
             contentTagService.updateById(tag);

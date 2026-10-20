@@ -35,4 +35,31 @@ public class ContentTagServiceImpl extends ServiceImpl<ContentTagMapper, Content
                 .filter(t -> !t.isEmpty() && whitelist.contains(t.toLowerCase()))
                 .collect(Collectors.joining(","));
     }
+
+    @Override
+    public Set<String> getInternalTagNames() {
+        List<ContentTag> tags = lambdaQuery()
+                .eq(ContentTag::getDeleted, 0)
+                .eq(ContentTag::getIsInternal, 1)
+                .list();
+        return tags.stream()
+                .map(t -> t.getName() == null ? "" : t.getName().toLowerCase())
+                .filter(n -> !n.isEmpty())
+                .collect(Collectors.toSet());
+    }
+
+    @Override
+    public String stripInternalTags(String rawTags, Set<String> internalLowerNames) {
+        if (rawTags == null || rawTags.trim().isEmpty()) {
+            return rawTags;
+        }
+        Set<String> internal = internalLowerNames != null ? internalLowerNames : getInternalTagNames();
+        if (internal.isEmpty()) {
+            return rawTags;
+        }
+        return Arrays.stream(rawTags.split(","))
+                .map(String::trim)
+                .filter(t -> !t.isEmpty() && !internal.contains(t.toLowerCase()))
+                .collect(Collectors.joining(","));
+    }
 }

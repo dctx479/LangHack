@@ -104,6 +104,8 @@ public class PublicTextController {
         try {
             List<ContentTag> tags = contentTagService.lambdaQuery()
                     .eq(ContentTag::getDeleted, 0)
+                    // 内部标签（学院-专业）不参与学生端选标签
+                    .and(w -> w.eq(ContentTag::getIsInternal, 0).or().isNull(ContentTag::getIsInternal))
                     .orderByAsc(ContentTag::getSortOrder)
                     .orderByAsc(ContentTag::getId)
                     .list();
@@ -111,6 +113,25 @@ public class PublicTextController {
         } catch (Exception e) {
             log.error("获取内容标签列表失败", e);
             return Result.error("获取标签列表失败");
+        }
+    }
+
+    /**
+     * 学生端脱敏：内部标签（如「学院-专业」）只用于内容追溯，不展示给学生。
+     * 直接改 tags 字段，前端拿到的仍是逗号串，无需任何改动。
+     */
+    private void hideInternalTags(List<Text> texts) {
+        if (texts == null || texts.isEmpty()) {
+            return;
+        }
+        Set<String> internal = contentTagService.getInternalTagNames();
+        if (internal.isEmpty()) {
+            return;
+        }
+        for (Text text : texts) {
+            if (text != null) {
+                text.setTags(contentTagService.stripInternalTags(text.getTags(), internal));
+            }
         }
     }
 
@@ -203,6 +224,7 @@ public class PublicTextController {
                 }
                 TextEncodingRepair.repairAll(refreshed);
                 authorEnricher.enrichTexts(refreshed);
+                hideInternalTags(refreshed);
                 return Result.success(refreshed);
             }
 
@@ -237,6 +259,7 @@ public class PublicTextController {
 
             TextEncodingRepair.repairAll(result);
             authorEnricher.enrichTexts(result);
+            hideInternalTags(result);
             return Result.success(result);
         } catch (Exception e) {
             log.error("获取推荐文章失败", e);
@@ -276,6 +299,7 @@ public class PublicTextController {
             List<Text> texts = textService.getPublicTexts(page, size, difficulty, keyword);
             TextEncodingRepair.repairAll(texts);
             authorEnricher.enrichTexts(texts);
+            hideInternalTags(texts);
 
             // 获取总数（不分页）
             com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<Text> countWrapper =
@@ -337,6 +361,7 @@ public class PublicTextController {
             }
             TextEncodingRepair.repairAll(result);
             authorEnricher.enrichTexts(result);
+            hideInternalTags(result);
             return Result.success(result);
         } catch (Exception e) {
             log.error("获取推荐文章失败", e);
@@ -506,6 +531,7 @@ public class PublicTextController {
 
             TextEncodingRepair.repairAll(randomTexts);
             authorEnricher.enrichTexts(randomTexts);
+            hideInternalTags(randomTexts);
             return Result.success(randomTexts);
         } catch (Exception e) {
             log.error("获取随机课文失败", e);

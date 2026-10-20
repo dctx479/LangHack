@@ -18,6 +18,13 @@ public class ContentTag {
     @TableField("sort_order")
     private Integer sortOrder;
 
+    /**
+     * 1 = 内部标签：只用于内容追溯（如「学院-专业」），学生端任何接口都不返回。
+     * 0 / null = 普通标签，正常展示。
+     */
+    @TableField("is_internal")
+    private Integer isInternal;
+
     @TableField("deleted")
     @TableLogic(value = "0", delval = "1")
     private Integer deleted;
@@ -41,6 +48,9 @@ public class ContentTag {
 
     public Integer getSortOrder() { return sortOrder; }
     public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }
+
+    public Integer getIsInternal() { return isInternal; }
+    public void setIsInternal(Integer isInternal) { this.isInternal = isInternal; }
 
     public Integer getDeleted() { return deleted; }
     public void setDeleted(Integer deleted) { this.deleted = deleted; }
