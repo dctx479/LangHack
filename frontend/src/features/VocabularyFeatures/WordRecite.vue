@@ -553,6 +553,7 @@ const imageLoadError = () => {
 // 单词发音
 // 静音状态下直接 return，避免任何路径（自动 watch / 将来其他位置调用）意外播放
 const speakWord = () => {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return
   if (!currentWord.value) return
   if (isMobile.value) return
   if (!autoSpeakEnabled.value) return
@@ -1097,6 +1098,58 @@ const loadArticleWords = async () => {
   }
 }
 
+const loadMasteredVocabulary = async () => {
+  const records = []
+  const pageSize = 100
+  let page = 1
+  let hasMore = true
+
+  try {
+    while (hasMore) {
+      // CET entries are also stored in vocabulary_books, so leave sourceType unset.
+      const res = await getVocabularyList({ page, size: pageSize })
+      const data = res?.data
+      const batch = Array.isArray(data?.records) ? data.records : []
+      if (page > 1 && batch.length === 0 && records.length > 0 && Number(data?.total) === 0) {
+        throw new Error('Mastered vocabulary pagination ended before all records were loaded')
+      }
+      records.push(...batch)
+
+      const total = data?.total == null ? Number.NaN : Number(data.total)
+      if (Number.isFinite(total) && total >= 0) {
+        hasMore = records.length < total && batch.length > 0
+      } else if (batch.length < pageSize) {
+        hasMore = false
+      }
+      if (hasMore) page++
+    }
+
+    const recordsByWord = new Map(records
+      .map(record => [String(record.word || '').trim().toLowerCase(), record])
+      .filter(([word]) => word))
+    allWords.value = allWords.value.map(word => {
+      const backendRecord = recordsByWord.get(String(word.word || '').trim().toLowerCase())
+      if (!backendRecord) return word
+      if (backendRecord.masteryLevel === 'MASTERED') return { ...word, mastered: true, synced: true }
+      return word.synced === true ? { ...word, mastered: false, synced: true } : word
+    })
+
+    const progressKey = `vocab_progress_${currentUserId.value}_${selectedVocabulary.value}`
+    localStorage.setItem(progressKey, JSON.stringify(allWords.value.map(word => ({
+      word: word.word,
+      reviewCount: word.reviewCount,
+      interval: word.interval,
+      easinessFactor: word.easinessFactor,
+      lastReviewTime: word.lastReviewTime,
+      mastered: word.mastered,
+      unknownCount: word.unknownCount,
+      synced: word.synced
+    }))))
+  } catch (error) {
+    console.warn('Unable to refresh mastered vocabulary; using local progress.', error)
+  }
+}
+
 // 手动刷新"当前可用文章生词"的数量
 // 用户在生词本里把已掌握的词重置为学习中后，点击这里可以让计数立即同步
 const refreshArticleWordsCount = async () => {
@@ -1408,26 +1461,20 @@ const loadVocabularyData = async (file) => {
     // 从 localStorage 加载复习进度（自动检测词库更新）
     const progressKey = `vocab_progress_${currentUserId.value}_${selectedVocabulary.value}`
     const savedCountKey = `vocab_count_${currentUserId.value}_${selectedVocabulary.value}`
-    const savedCount = localStorage.getItem(savedCountKey)
     const currentCount = allWords.value.length
-    // 如果词库词数变了（比如从418更新到1500），自动清旧进度
-    if (savedCount && parseInt(savedCount) !== currentCount) {
-      localStorage.removeItem(progressKey)
-      localStorage.removeItem(savedCountKey)
-      clearAllVocabIndexKeys()
-      console.log('词库已更新，旧进度已清除')
-    } else {
-      const savedProgress = localStorage.getItem(progressKey)
-      if (savedProgress) {
-        const progress = JSON.parse(savedProgress)
-        allWords.value = allWords.value.map(word => {
-          const savedWord = progress.find(p => p.word === word.word)
-          return savedWord ? { ...word, ...savedWord } : word
-        })
-      }
+    const savedProgress = localStorage.getItem(progressKey)
+    if (savedProgress) {
+      const progress = JSON.parse(savedProgress)
+      const progressByWord = new Map(progress.map(item => [item.word, item]))
+      allWords.value = allWords.value.map(word => {
+        const savedWord = progressByWord.get(word.word)
+        return savedWord ? { ...word, ...savedWord } : word
+      })
     }
     // 保存当前词数，用于下次检测
     localStorage.setItem(savedCountKey, currentCount.toString())
+
+    if (userStore.token) await loadMasteredVocabulary()
 
     // 顺便也算一次 masteredWords，让用户在向导阶段如果观察到统计也能看到正确值
     masteredWords.value = allWords.value.filter(w => w.mastered).length
